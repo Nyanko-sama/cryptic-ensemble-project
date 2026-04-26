@@ -4,10 +4,11 @@
 ```
 |---data_prep   
 |---data
-|   |---cryptobench
+|   |---cryptobench             # cryptobench dataset, contains dataset.json, sequences.json and cif-files/
 |   |---bioemu
-|---bioemu
-|
+|---bioemu                      # scripts for running bioemu, installation guide later 
+|---utils
+|   |---working_with_cryptobenchpy          # some functions for cryptobench. Stolen from tutorial :) 
 ```
 
 # Dataset
@@ -18,3 +19,4 @@ To obtain dataset:
 - run get_data.sh
 
 # BioEmu
+I had prepared env on metacentrum. So no intallation guide. I will add it later. 
