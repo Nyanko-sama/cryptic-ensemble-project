@@ -19,3 +19,18 @@ Data were prepared based on [tutorial.ipynb](data_prep/tutorial.ipynb)
 
 - data_prep.ipynb -> my testing of some utils for cryptobench to get chains, sequences and so on. 
 - tutorial.ipynb -> just copied from cryptobench repo. Useful, but you can skip it, if you don't need to retrive some data from dataset that don't have function in utils/
+
+## P2Rank
+First, download p2rank via
+```
+get_p2rank.sh
+```
+- this downloads it from the repo and extracts it into the folder `../p2rank`
+
+Then, make sure you have a Java (OpenJDK) 17 (or higher) installed
+- on MetaCentrum, run `module add openjdk/17`
+
+You can run the p2rank predictions with
+```
+run_p2rank.sh
+```
