@@ -30,5 +30,4 @@ def prediction_pipeline(args, aggregation_func, process_func, output_path):
 def save_predictions(prediction_df, output_path):
     if not os.path.exists(os.path.dirname(output_path)):
         os.makedirs(os.path.dirname(output_path))
-        
     prediction_df.to_csv(output_path, index=False)
