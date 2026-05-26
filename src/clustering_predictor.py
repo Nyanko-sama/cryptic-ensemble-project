@@ -1,8 +1,7 @@
+import os
+
 import pandas as pd
 import numpy as np
-import os
-import argparse
-import sys
 import multiprocessing
 
 from sklearn.cluster import DBSCAN
@@ -11,17 +10,17 @@ from functools import partial
 
 def add_args(parser):
     parser.add_argument("--columns", default="score", help="Comma-separated list of columns to average. Default: score")
-
+    parser.add_argument("--eps", type=float, default=2.0, help="DBSCAN eps parameter for clustering pockets. Default: 2.0")
     return parser
-def string_list_union(list, sep=';'):
-    if not list:
+def string_list_union(inputs, sep=' '):
+    if not inputs:
         return []
-    return list(set([val for sublist in list for val in sublist.split(sep)]))
+    return list(set([val for sublist in inputs for val in sublist.split(sep)]))
 
 def dbscan_cluster(coords, eps=2.0):
     return DBSCAN(eps=eps, min_samples=1, n_jobs=multiprocessing.cpu_count()).fit_predict(coords)
 
-def aggregate_pockets(prediction_df: pd.DataFrame, cluster_function=dbscan_cluster):
+def aggregate_pockets(prediction_df: pd.DataFrame, cluster_func=dbscan_cluster):
     """
     Aggregate pocket predictions across frames for a given protein directory.
     Returns a DataFrame with aggregated pocket information. The cluster function should 
@@ -30,7 +29,7 @@ def aggregate_pockets(prediction_df: pd.DataFrame, cluster_function=dbscan_clust
 
     Parameters:
     prediction_df (pd.DataFrame): DataFrame containing pocket predictions across frames.
-    cluster_function (function): Function that takes in 3D coordinates and returns cluster labels. Default is DBSCAN clustering.
+    cluster_func (function): Function that takes in 3D coordinates and returns cluster labels. Default is DBSCAN clustering.
 
     Returns: pd.DataFrame: DataFrame with aggregated pocket information, including averaged scores and coordinates.
     """
@@ -40,7 +39,7 @@ def aggregate_pockets(prediction_df: pd.DataFrame, cluster_function=dbscan_clust
     coords = prediction_df[["center_x", "center_y", "center_z"]].values
 
     # Using DBSCAN to cluster predictions that are within 2.0 units (assuming Ångströms) of each other
-    prediction_df['cluster'] = cluster_function(coords, eps=2.0)
+    prediction_df['cluster'] = cluster_func(coords)
 
     # Aggregate scores by cluster   
     aggregated = prediction_df.groupby('cluster').agg(list).reset_index(drop=True)
@@ -71,15 +70,17 @@ def process_pockets(aggregated_df, by_column="score", n_frames=None):
     for coord in ["center_x", "center_y", "center_z"]:
         aggregated_df[coord] = aggregated_df[coord].apply(lambda x: np.mean(x))
     aggregated_df['residue_ids'] = aggregated_df['residue_ids'].apply(string_list_union)
-    aggregated_df = aggregated_df.drop(columns=['cluster'])
     aggregated_df = aggregated_df.sort_values(by=by_column, ascending=False)
     aggregated_df['rank'] = range(1, len(aggregated_df) + 1)
-    
-    return aggregated_df
+    # Just a placeholder really
+    aggregated_df['probability'] = aggregated_df['probability'].apply(lambda x: np.mean(x) if isinstance(x, list) else x)
+    aggregated_df['name'] = aggregated_df['rank'].apply(lambda x: f"pocket{x}")
+    return aggregated_df.reset_index(drop=True)[['name', 'rank', by_column, 'probability', 'center_x', 'center_y', 'center_z', 'residue_ids']]
 
 if __name__ == "__main__":
     parser = create_base_parser()
     parser = add_args(parser)
     args = parser.parse_args()
-    output_path = args.output_path if args.output_path else args.base_dir
-    prediction_pipeline(args, partial(aggregate_pockets, cluster_function=dbscan_cluster), partial(process_pockets, by_column='score'), output_path=output_path)
+    output_path = args.output_path if args.output_path else os.path.join(os.path.pardir, "output", f"clustering_predictions_eps{args.eps}")
+    cluster_function = partial(dbscan_cluster, eps=args.eps)
+    prediction_pipeline(args, partial(aggregate_pockets, cluster_func=cluster_function), partial(process_pockets, by_column='score'), output_path=output_path)
