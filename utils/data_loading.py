@@ -1,22 +1,41 @@
 import os
 import glob
+import json
+import numpy as np
 import pandas as pd
 
-def get_protein_dirs(protein_arg : str, base_dir : str, recursive=False):
-    candidate = os.path.join(base_dir, protein_arg)
-    if os.path.isdir(candidate):
-        if recursive:
-            return sorted(
-                [os.path.join(candidate, name) for name in os.listdir(candidate) if os.path.isdir(os.path.join(candidate, name))]
-            )
-        return [candidate]
+def get_protein_dirs(base_dir : str, recursive=False):
+    if not os.path.isdir(base_dir):
+        raise FileNotFoundError(f"Base directory not found: {base_dir}")
 
-    if os.path.isdir(protein_arg):
-        return [protein_arg]
-
+    if recursive:
+        return sorted(
+            [os.path.join(base_dir, name) for name in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, name))]
+        )
+    elif os.path.isdir(base_dir):
+        return [base_dir]
+    
     raise FileNotFoundError(
-        f"Protein directory not found: {protein_arg}. Expected under base dir: {base_dir}."
+        f"Protein directory not found: {base_dir}."
     )
+
+def get_alignment_matrices(protein_dir, input_path=None):
+    alignment_path = input_path or os.path.join(protein_dir, "structure_alignment_matrices.json")
+    if not os.path.isfile(alignment_path):
+        raise FileNotFoundError(f"Alignment matrices not found at expected path: {alignment_path}")
+    with open(alignment_path) as f:
+        alignments = json.load(f)["alignments"]
+
+    for entry in alignments:
+        entry["rotation"] = np.asarray(entry["rotation"], dtype=float)
+        entry["translation"] = np.asarray(entry["translation"], dtype=float)
+    return alignments
+
+def gather_frames(protein_dir):
+    frame_files = sorted(glob.glob(os.path.join(protein_dir, "frame_*.pdb")))
+    if not frame_files:
+        raise FileNotFoundError(f"No frame_*.pdb files found in protein folder: {protein_dir}")
+    return frame_files
 
 def gather_predictions(protein_dir):
     pred_files = sorted(glob.glob(os.path.join(protein_dir, "frame_*_predictions.csv")))
@@ -26,6 +45,7 @@ def gather_predictions(protein_dir):
     res = []
     for pred_file in pred_files:
         df = pd.read_csv(pred_file, skipinitialspace=True)
+        df.columns = df.columns.str.strip()  # Strip whitespace from column names
         if not {"name", "score", "center_x", "center_y", "center_z", "residue_ids"}.issubset(df.columns):
             raise ValueError(f"Missing required columns in {pred_file}. Required: name, score, center_x, center_y, center_z, residue_ids")
         

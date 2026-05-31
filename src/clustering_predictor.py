@@ -3,6 +3,7 @@ import numpy as np
 import os
 import argparse
 import sys
+
 import multiprocessing
 
 from sklearn.cluster import DBSCAN
@@ -21,7 +22,7 @@ def string_list_union(list, sep=';'):
 def dbscan_cluster(coords, eps=2.0):
     return DBSCAN(eps=eps, min_samples=1, n_jobs=multiprocessing.cpu_count()).fit_predict(coords)
 
-def aggregate_pockets(prediction_df: pd.DataFrame, cluster_function=dbscan_cluster):
+def aggregate_pockets(prediction_df: pd.DataFrame, cluster_function=dbscan_cluster, verbose=0):
     """
     Aggregate pocket predictions across frames for a given protein directory.
     Returns a DataFrame with aggregated pocket information. The cluster function should 
@@ -34,7 +35,6 @@ def aggregate_pockets(prediction_df: pd.DataFrame, cluster_function=dbscan_clust
 
     Returns: pd.DataFrame: DataFrame with aggregated pocket information, including averaged scores and coordinates.
     """
-    
 
     # Cluster predictions based on spatial proximity
     coords = prediction_df[["center_x", "center_y", "center_z"]].values
@@ -62,7 +62,7 @@ def cosine_weighted_average(scores, n_frames):
         return 0
     return np.mean(scores) * (1 + np.cos(np.pi * (len(scores) - 1) / n_frames)) / 2
 
-def process_pockets(aggregated_df, by_column="score", n_frames=None):
+def process_pockets(aggregated_df, by_column="score", n_frames=None, verbose=0):
     if by_column not in aggregated_df.columns:
         raise ValueError(f"Column '{by_column}' not found in aggregated DataFrame.")
     
