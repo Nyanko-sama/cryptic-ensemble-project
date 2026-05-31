@@ -1,6 +1,7 @@
 
 import argparse
 import os
+import sys
 import json
 import sys
 import numpy as np
@@ -131,7 +132,10 @@ def prediction_pipeline(args, aggregation_func, process_func, output_path):
         # Save final predictions for this protein and add to overall results
         all_preds[os.path.basename(protein_dir)] = final_pred_df.to_dict(orient='records')
         save_predictions(final_pred_df, os.path.join(output_path, os.path.basename(protein_dir) + "_final_predictions.csv"))
+
+    save_all_predictions(all_preds, output_path)
     
+def save_all_predictions(all_preds, output_path):
     # Save all predictions to a JSON file for easier downstream analysis
     with open(os.path.join(output_path, "all_predictions.json"), 'w') as f:
         json.dump(all_preds, f, indent=4)

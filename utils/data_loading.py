@@ -43,6 +43,7 @@ def gather_predictions(protein_dir):
         raise FileNotFoundError(f"No frame_*_predictions.csv files found in protein folder: {protein_dir}")
     
     res = []
+    n_frames = len(pred_files)
     for pred_file in pred_files:
         df = pd.read_csv(pred_file, skipinitialspace=True)
         df.columns = df.columns.str.strip()  # Strip whitespace from column names
@@ -52,7 +53,7 @@ def gather_predictions(protein_dir):
         df['frame'] = os.path.basename(pred_file).split('_predictions.csv')[0]
         res.append(df)
 
-    return pd.concat(res, ignore_index=True).sort_values(by='score', ascending=False)
+    return pd.concat(res, ignore_index=True).sort_values(by='score', ascending=False), n_frames
 
 def gather_residues(protein_dir):
     res_files = sorted(glob.glob(os.path.join(protein_dir, "frame_*_residues.csv")))
