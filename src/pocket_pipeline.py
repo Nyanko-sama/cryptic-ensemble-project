@@ -16,7 +16,7 @@ def create_base_parser():
     parser = argparse.ArgumentParser(description="Run the full prediction pipeline for cryptic pocket detection.")
     parser.add_argument("--conform_dir", default='../data/bioemu_results', help="Directory containing conformational ensemble data. Default: ../data/bioemu_results")
     parser.add_argument("--preds_dir", default="../data/p2rank_preds", help="Base directory where protein prediction folders are located. Defaults to ../data/p2rank_preds relative to script.")
-    parser.add_argument("--output_path", default="final_predictions.csv", help="Path to save the final predictions CSV file. Default: final_predictions.csv")
+    parser.add_argument("--output_dir", default=None, help="Directory to save the final predictions CSV file. Default: ../output")
     parser.add_argument("--ref_structure_folder", default="../data/cryptobench/cryptobench-dataset/auxiliary-data/cif-files", help="Folder containing reference structures for alignment.")
     parser.add_argument("--recursive", default=True, type=bool, help="Recursively search for protein directories under the base directory.")
     parser.add_argument("-v", type=int, default=0, help="Verbosity level. Higher values will print more detailed processing information. Default: 0 (no verbose output).")
@@ -55,8 +55,8 @@ def compute_frame_alignment(ref_atoms, frame_atoms):
     return R, t, n_matched, rmsd
 
 def align_pocket_coordinates(prediction_df, alignment_out):
-    grouped = prediction_df.groupby('frame')
-    transform_dict = {entry['frame']: entry for entry in alignment_out}
+    grouped = prediction_df.groupby('frame_file')
+    transform_dict = {entry['frame_file']: entry for entry in alignment_out}
 
     for frame, group in grouped:
         if frame not in transform_dict:
@@ -110,10 +110,15 @@ def prediction_pipeline(args, aggregation_func, process_func, output_path):
         if args.v > 0:
             print(f"Processing protein: {prot_name}")
 
-        predictions_df = gather_predictions(protein_dir)
+        try:
+            predictions_df, n_frames = gather_predictions(protein_dir)
+        except Exception as e:
+            print(f"Error occurred while gathering predictions for {prot_name}: {e}")
+
         if predictions_df.empty:
-            raise ValueError(f"No predictions found in protein directory: {protein_dir}")
-        n_frames = predictions_df.shape[0]
+            print(ValueError(f"No predictions found in protein directory: {protein_dir}, skipping this protein."))
+            continue
+
         reference_structure_path = os.path.join(args.ref_structure_folder, prot_name + ".cif")
         if args.v > 0:
             print(f"Computing structure alignments for {prot_name} using reference structure at: {reference_structure_path}")
@@ -131,10 +136,10 @@ def prediction_pipeline(args, aggregation_func, process_func, output_path):
 
         # Save final predictions for this protein and add to overall results
         all_preds[os.path.basename(protein_dir)] = final_pred_df.to_dict(orient='records')
-        save_predictions(final_pred_df, os.path.join(output_path, os.path.basename(protein_dir) + "_final_predictions.csv"))
+        save_predictions(final_pred_df, os.path.join(output_path, os.path.basename(protein_dir) + "_aggregated_predictions.csv"))
 
     save_all_predictions(all_preds, output_path)
-    
+
 def save_all_predictions(all_preds, output_path):
     # Save all predictions to a JSON file for easier downstream analysis
     with open(os.path.join(output_path, "all_predictions.json"), 'w') as f:
