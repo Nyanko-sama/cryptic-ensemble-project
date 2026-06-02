@@ -96,7 +96,7 @@ def evaluation_pipeline(predictions_json, eval_dataset_path, DCC_threshold=4.0, 
 if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
-    metrics = evaluation_pipeline(args.predictions_json, args.eval_dataset_path, DCC_threshold=args.DCC_threshold, k=args.k)
+    metrics = evaluation_pipeline(args.all_predictions_json, args.eval_dataset_path, DCC_threshold=args.DCC_threshold, k=args.k)
     nice_print_metrics(metrics)
-    args.output_path = os.path.join(os.path.dirname(args.predictions_json), f"evaluation_metrics_topn_plus{args.k}_{args.DCC_threshold}.json")
+    args.output_path = os.path.join(os.path.dirname(args.all_predictions_json), f"evaluation_metrics_topn_plus{args.k}_{args.DCC_threshold}.json")
     save_metrics(metrics, args.output_path)
