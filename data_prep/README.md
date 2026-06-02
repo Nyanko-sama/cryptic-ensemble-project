@@ -22,7 +22,7 @@ Data were prepared based on [tutorial.ipynb](data_prep/tutorial.ipynb)
 
 ## P2Rank
 First, download p2rank via
-```
+```bash
 get_p2rank.sh
 ```
 - this downloads it from the repo and extracts it into the folder `../p2rank`
@@ -31,6 +31,24 @@ Then, make sure you have a Java (OpenJDK) 17 (or higher) installed
 - on MetaCentrum, run `module add openjdk/17`
 
 You can run the p2rank predictions with
-```
+```bash
 run_p2rank.sh
 ```
+
+## fpocket
+sorry, I prefer to use conda for it. So if you don't have conda yet - install it!
+
+```bash
+# Create an environment named 'fpocket_env' and install the package
+conda create -n fpocket_env -c bioconda fpocket
+```
+
+Run fpocket 
+```bash
+./run_fpocket.sh
+```
+
+Run p2Rank to transform fpocket output to p2Rank output format:
+```bash 
+./run_fpocket_rescore.sh
+```s
