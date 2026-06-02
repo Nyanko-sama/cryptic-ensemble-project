@@ -19,6 +19,20 @@ def get_protein_dirs(base_dir : str, recursive=False):
         f"Protein directory not found: {base_dir}."
     )
 
+def load_all_predictions(predictions_json):
+    if not os.path.isfile(predictions_json):
+        raise FileNotFoundError(f"Predictions JSON file not found: {predictions_json}")
+    with open(predictions_json) as f:
+        all_preds = json.load(f)
+    return pd.concatenate([pd.DataFrame.from_records(preds) for preds in all_preds.values()], index=all_preds.keys())
+
+def load_evaluation_dataset(eval_dataset_path):
+    df = pd.read_csv(eval_dataset_path, names=['pdb_id', 'chain_id', 'ligands', 'residue_ids'], sep=';', skipinitialspace=True)
+    df['ligands'] = df['ligands'].apply(lambda x: x.split(' ') if pd.notna(x) else [])
+    df['residue_ids'] = df['residue_ids'].apply(lambda x: x.split(' ') if pd.notna(x) else [])
+    df['chain_id'] = df['chain_id'].str.strip()
+    return df
+
 def get_alignment_matrices(protein_dir, input_path=None):
     alignment_path = input_path or os.path.join(protein_dir, "structure_alignment_matrices.json")
     if not os.path.isfile(alignment_path):
@@ -50,7 +64,7 @@ def gather_predictions(protein_dir):
         if not {"name", "score", "center_x", "center_y", "center_z", "residue_ids"}.issubset(df.columns):
             raise ValueError(f"Missing required columns in {pred_file}. Required: name, score, center_x, center_y, center_z, residue_ids")
         
-        df['frame'] = os.path.basename(pred_file).split('_predictions.csv')[0]
+        df['frame_file'] = os.path.basename(pred_file).split('_predictions.csv')[0]
         res.append(df)
 
     return pd.concat(res, ignore_index=True).sort_values(by='score', ascending=False), n_frames
@@ -65,7 +79,7 @@ def gather_residues(protein_dir):
         if not {"chain", "residue_label", "residue_name"}.issubset(df.columns):
             raise ValueError(f"Missing required columns in {res}. Required: chain, residue_label, residue_name")
 
-        df['frame'] = os.path.basename(res).split('_residues.csv')[0]
+        df['frame_file'] = os.path.basename(res).split('_residues.csv')[0]
         res.append(df)
 
     res_df = pd.concat(res, ignore_index=True).groupby(['chain', 'residue_label', 'residue_name'], sort=False).agg(list)
