@@ -17,7 +17,7 @@ from deeplife_2026.src.RRO import RRO
 
 def create_parser():
     parser = argparse.ArgumentParser(description="Evaluate performance of a pocket prediction method against the CryptoBench dataset.")
-    parser.add_argument("--predictions_json", required=True, help="Path to JSON file containing pocket predictions to evaluate. Must contain columns: name, score, center_x, center_y, center_z, residue_ids, frame_file.")
+    parser.add_argument("--all_predictions_json", required=True, help="Path to JSON file containing pocket predictions to evaluate. Must contain columns: name, score, center_x, center_y, center_z, residue_ids, frame_file.")
     parser.add_argument("--crypto_path", default="../data/cryptobench/", help="Path to the cryptobench repository. Default: ../data/cryptobench/")
     parser.add_argument("--eval_dataset_path", default="../data/test_eval_dataset_auth_labels.csv", help="Path to the evaluation dataset CSV file. Default: ../data/deeplife_2026/test.csv")
     parser.add_argument("--DCC_threshold", type=float, default=12, help="Threshold for DCC metric. Default: 5.0")
