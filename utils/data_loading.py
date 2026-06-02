@@ -24,14 +24,22 @@ def load_all_predictions(predictions_json):
         raise FileNotFoundError(f"Predictions JSON file not found: {predictions_json}")
     with open(predictions_json) as f:
         all_preds = json.load(f)
-    return pd.concatenate([pd.DataFrame.from_records(preds) for preds in all_preds.values()], index=all_preds.keys())
+    return pd.concat([pd.DataFrame.from_records(preds).assign(pdb_id=id) for id, preds in all_preds.items()], ignore_index=True).groupby('pdb_id', sort=False).agg(list)
 
-def load_evaluation_dataset(eval_dataset_path):
+def extract_digit(string):
+    if string.isdigit():
+        return int(string)
+    else:
+        return int(string[:-1])
+
+def load_cryptobench_csv(eval_dataset_path):
     df = pd.read_csv(eval_dataset_path, names=['pdb_id', 'chain_id', 'ligands', 'residue_ids'], sep=';', skipinitialspace=True)
     df['ligands'] = df['ligands'].apply(lambda x: x.split(' ') if pd.notna(x) else [])
-    df['residue_ids'] = df['residue_ids'].apply(lambda x: x.split(' ') if pd.notna(x) else [])
-    df['chain_id'] = df['chain_id'].str.strip()
+    df['residue_ids'] = df['residue_ids'].apply(lambda x: [extract_digit(id) for id in x.split(' ')] if pd.notna(x) else [])
     return df
+
+def load_evaluation_dataset(eval_dataset_path):
+    return pd.read_csv(eval_dataset_path,skipinitialspace=True)
 
 def get_alignment_matrices(protein_dir, input_path=None):
     alignment_path = input_path or os.path.join(protein_dir, "structure_alignment_matrices.json")
