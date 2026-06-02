@@ -63,8 +63,8 @@ def precompute_addition_eval_data(dataframe, auth_labels=True):
         print(f"Processing {idx}...")
         cif_file_path = f"../data/cryptobench/cryptobench-dataset/auxiliary-data/cif-files/{idx.lower()}.cif"
         coords = [extract_site_coords(cif_file_path, row['chain_id'], binding_residues, auth=auth_labels) for binding_residues in row['residue_ids']]
-        temp_ids = [extract_ids(cif_file_path, chain_id, auth=auth_labels) for chain_id in row['chain_id']]
-        center = [compute_center(np.vstack(coord)) for coord in coords]
+        temp_ids = [extract_ids(cif_file_path, chain_id, auth=auth_labels).tolist() for chain_id in row['chain_id']]
+        center = [compute_center(np.vstack(coord)).tolist() for coord in coords]
         centers.append(center)
         ids.append(temp_ids)
     return centers, ids
@@ -74,9 +74,10 @@ def prepare_dataset(args):
     print(eval_dataset.head(1))
     centers, ids = precompute_addition_eval_data(eval_dataset, auth_labels=args.auth_labels)
     eval_dataset['centers'] = centers
-    eval_dataset['ids'] = ids
-    output_path = f"{args.output_dir}/{os.path.basename(args.csv_path).replace('.csv', '')}_eval_dataset_{'auth' if args.auth_labels else 'non-auth'}_labels.csv"
-    eval_dataset.to_csv(output_path)
+    eval_dataset['total_residue_ids'] = ids
+    eval_dataset.rename(columns={'residue_ids': 'binding_residue_ids'}, inplace=True)
+    output_path = f"{args.output_dir}/{os.path.basename(args.csv_path).replace('.csv', '')}_eval_dataset_{'auth' if args.auth_labels else 'non_auth'}_labels.json"
+    eval_dataset.to_json(output_path, indent=2)
 
 if __name__ == "__main__":
     parser = create_parser()

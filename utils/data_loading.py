@@ -24,7 +24,17 @@ def load_all_predictions(predictions_json):
         raise FileNotFoundError(f"Predictions JSON file not found: {predictions_json}")
     with open(predictions_json) as f:
         all_preds = json.load(f)
-    return pd.concat([pd.DataFrame.from_records(preds).assign(pdb_id=id) for id, preds in all_preds.items()], ignore_index=True).groupby('pdb_id', sort=False).agg(list)
+
+    buffer = []
+    for id, preds in all_preds.items():
+        df = pd.DataFrame.from_records(preds)
+        df.columns = df.columns.str.strip()  # Strip whitespace from column names
+        df['pdb_id'] = id
+        for col in ['center_x', 'center_y', 'center_z']:
+            df[col] = df[col].astype(float)
+
+        buffer.append(df)
+    return pd.concat(buffer, ignore_index=True).groupby('pdb_id', sort=False).agg(list)
 
 def extract_digit(string):
     if string.isdigit():
@@ -39,7 +49,9 @@ def load_cryptobench_csv(eval_dataset_path):
     return df
 
 def load_evaluation_dataset(eval_dataset_path):
-    return pd.read_csv(eval_dataset_path,skipinitialspace=True)
+    df = pd.read_json(eval_dataset_path)
+    df.index.name = 'pdb_id'
+    return df
 
 def get_alignment_matrices(protein_dir, input_path=None):
     alignment_path = input_path or os.path.join(protein_dir, "structure_alignment_matrices.json")
