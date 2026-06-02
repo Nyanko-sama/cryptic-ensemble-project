@@ -81,11 +81,8 @@ def nice_print_metrics(metrics):
 def evaluation_pipeline(predictions_json, eval_dataset_path, DCC_threshold=4.0, k=0):
     # Load predictions and target dataset
     grouped_predictions_df = load_all_predictions(predictions_json)
-    print(grouped_predictions_df.head(1))
     # assumes the dataset already passed through prepare_dataset.py and contains 'binding_residue_ids' and 'residue_ids' columns
     grouped_eval_dataset = load_evaluation_dataset(eval_dataset_path)
-    print(grouped_eval_dataset.head(1))
-
     # Compute metrics
     metrics = compute_metrics(grouped_predictions_df, grouped_eval_dataset, DCC_threshold=DCC_threshold, k=k)
     nice_print_metrics(metrics)
@@ -97,6 +94,5 @@ if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
     metrics = evaluation_pipeline(args.all_predictions_json, args.eval_dataset_path, DCC_threshold=args.DCC_threshold, k=args.k)
-    nice_print_metrics(metrics)
     args.output_path = os.path.join(os.path.dirname(args.all_predictions_json), f"evaluation_metrics_topn_plus{args.k}_{args.DCC_threshold}.json")
     save_metrics(metrics, args.output_path)
