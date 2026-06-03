@@ -3,4 +3,4 @@ data/
 p2rank
 venv
 p2rank_preds
-output
+output/

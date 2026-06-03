@@ -14,7 +14,7 @@ REPO_DIR="$(dirname "$SCRIPT_DIR")"
 # Data directory
 DATA_DIR="$REPO_DIR/data"
 # Input directory with PDB frames from bioemulations
-RESULTS_BASE_DIR="$DATA_DIR/bioemu_results"
+RESULTS_BASE_DIR="$DATA_DIR/bioemu_outputs"
 # Output directory for fpocket predictions
 OUTPUT_BASE_DIR="$DATA_DIR/fpocket_preds"
 # Number of parallel processes (adjust based on your system)
