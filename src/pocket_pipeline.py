@@ -134,9 +134,8 @@ def prediction_pipeline(args, aggregation_func, process_func, output_path):
             print(f"Error occurred while gathering predictions for {prot_name}: {e}")
 
         if predictions_df.empty:
-            print(ValueError(f"No predictions found in protein directory: {protein_dir}, skipping this protein."))
+            print(f"No predictions in the prediction files for {prot_name}. Skipping.")
             continue
-
         reference_structure_path = os.path.join(args.ref_structure_folder, prot_name + ".cif")
         if args.v > 0:
             print(f"Computing structure alignments for {prot_name} using reference structure at: {reference_structure_path}")
@@ -146,7 +145,7 @@ def prediction_pipeline(args, aggregation_func, process_func, output_path):
                                                      alignment_dir=args.alignment_dir)
         predictions_df = align_pocket_coordinates(predictions_df, alignment_out)
 
-        # Aggregate pockets and process final predictions
+        # Aggregate pockets and process final predictions for this protein
         aggregation_out = aggregation_func(predictions_df, verbose=args.v)
         final_pred_df = process_func(aggregation_out, n_frames=n_frames, verbose=args.v)
 
@@ -187,7 +186,6 @@ def save_all_predictions(all_preds, output_path, team_name="Praga", model_versio
     for pdb_id, pred_records in all_preds.items():
         if not pred_records:
             continue
-        
         # Get chain and protein-level info from first record
         first_record = pred_records[0]
         chain = first_record.get('chain')
@@ -199,8 +197,9 @@ def save_all_predictions(all_preds, output_path, team_name="Praga", model_versio
                                             reverse=True), 1):
             pocket = {
                 "rank": rank,
-                "probability": float(record.get('score')), # For now, we are using the score as the probability. This can be changed if a separate probability field is available.
-                "residues":[{f"{chain}:{residue}"} for residue in record.get('residue_ids', [])],
+                "probability" : float(record.get('probability')),
+                "score": float(record.get('score')), # For now, we are using the score as the probability. This can be changed if a separate probability field is available.
+                "residues":[f"{chain}:{residue[2:]}" for residue in record.get('residue_ids', [])],
                 "center": [
                     float(record.get('center_x', 0)),
                     float(record.get('center_y', 0)),

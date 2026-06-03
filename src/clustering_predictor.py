@@ -13,6 +13,7 @@ def add_args(parser):
     parser.add_argument("--columns", default="score", help="Comma-separated list of columns to average. Default: score")
     parser.add_argument("--probability_agg", default="mean", choices=["mean", "max"], help="Method to aggregate probabilities across frames. Default: mean")
     parser.add_argument("--weight_type", default="cosine", choices=["cosine", "linear", "none"], help="Type of weighting to apply when averaging scores across frames. Default: cosine")
+    parser.add_argument("--score_base", default="mean", choices=["mean", "max", "median"], help="Method to aggregate scores across frames before weighting. Default: mean")
     parser.add_argument("--eps", type=float, default=2.0, help="DBSCAN eps parameter for clustering pockets. Default: 2.0")
     return parser
 
@@ -48,7 +49,7 @@ def aggregate_pockets(prediction_df: pd.DataFrame, cluster_func=dbscan_cluster, 
     aggregated = prediction_df.groupby('cluster').agg(list).reset_index(drop=True)
     return aggregated
 
-def cosine_weighted_average(scores, n_total_frames, n_cluster_frames):
+def cosine_weighted_average(scores, n_total_frames, n_cluster_frames, base_agg=np.mean):
     """
     Calculate the cosine-weighted average of a list of scores.
     Pockets present only in one frame will have a weight of 1, while pockets present in all frames will have a weight of ~0 (but > 0), with a smooth cosine transition in between.
@@ -63,9 +64,9 @@ def cosine_weighted_average(scores, n_total_frames, n_cluster_frames):
     """
     if len(scores) == 0:
         return 0
-    return np.mean(scores) * (1 + np.cos(np.pi * (n_cluster_frames - 1) / n_total_frames)) / 2
+    return base_agg(scores) * (1 + np.cos(np.pi * (n_cluster_frames - 1) / n_total_frames)) / 2
 
-def linear_weighted_average(scores, n_total_frames, n_cluster_frames):
+def linear_weighted_average(scores, n_total_frames, n_cluster_frames, base_agg=np.mean):
     """
     Calculate the linearly-weighted average of a list of scores.
     Pockets present only in one frame will have a weight of 1, while pockets present in all frames will have a weight of 0, with a linear transition in between.
@@ -81,30 +82,30 @@ def linear_weighted_average(scores, n_total_frames, n_cluster_frames):
     
     if len(scores) == 0:
         return 0
-    return np.mean(scores) * (1 - (n_cluster_frames - 1) / n_total_frames)
+    return base_agg(scores) * (1 - (n_cluster_frames - 1) / n_total_frames)
 
-def no_weight_average(scores, n_total_frames, n_cluster_frames):
+def no_weight_average(scores, n_total_frames, n_cluster_frames, base_agg=np.mean):
     """
     Calculate the simple average of a list of scores without any weighting.
 
     Parameters:
     scores (list): List of scores.
-    n_frames (int): Number of frames (not used in this function).
-    
+    n_total_frames (int): Total number of frames.
+    n_cluster_frames (int): Number of frames in the cluster.
+    base_agg (function): Aggregation function to use (default is np.mean).
+
     Returns:
     float: Simple average
     """
     if len(scores) == 0:
         return 0
-    return np.mean(scores)
+    return base_agg(scores)
 
-def get_weight_func(weight_type):
-    if weight_type == "cosine":
-        return cosine_weighted_average
-    elif weight_type == "linear":
-        return linear_weighted_average
-    elif weight_type == "none":
-        return no_weight_average
+def get_weight_func(weight_type, score_base):
+    base_agg = {"mean": np.mean, "max": np.max, "median": np.median}[score_base]
+    func = {"cosine": cosine_weighted_average, "linear": linear_weighted_average, "none": no_weight_average}.get(weight_type)
+    if func:
+        return partial(func, base_agg=base_agg)
     else:
         raise ValueError(f"Invalid weight type: {weight_type}. Must be one of: cosine, linear, none.")
     
@@ -115,8 +116,11 @@ def process_pockets(aggregated_df, weight_func, by_column="score", n_frames=None
     # Score is the average score across frames for the pocket, weighted by the number of predictions in each cluster
     aggregated_df['n_cluster_frames'] = aggregated_df['frame_file'].apply(lambda x: len(set(x)))
     aggregated_df[by_column] = aggregated_df[[by_column, 'n_cluster_frames']].apply(lambda x: weight_func(x[by_column], n_frames, x['n_cluster_frames']), axis=1)
+    
+    # Average the coordinates for pockets in the same cluster
     for coord in ["center_x", "center_y", "center_z"]:
         aggregated_df[coord] = aggregated_df[coord].apply(lambda x: np.mean(x))
+
     aggregated_df['residue_ids'] = aggregated_df['residue_ids'].apply(string_list_union)
     aggregated_df = aggregated_df.sort_values(by=by_column, ascending=False)
     aggregated_df['rank'] = range(1, len(aggregated_df) + 1)
@@ -125,6 +129,7 @@ def process_pockets(aggregated_df, weight_func, by_column="score", n_frames=None
         aggregated_df['probability'] = aggregated_df['probability'].apply(lambda x: np.mean(x) if isinstance(x, list) else x)
     elif args.probability_agg == "max":
         aggregated_df['probability'] = aggregated_df['probability'].apply(lambda x: np.max(x) if isinstance(x, list) else x)
+
     aggregated_df['name'] = aggregated_df['rank'].apply(lambda x: f"pocket{x}")
     return aggregated_df.reset_index(drop=True)[['name', 'rank', by_column, 'probability', 'center_x', 'center_y', 'center_z', 'residue_ids']]
 
@@ -132,7 +137,10 @@ if __name__ == "__main__":
     parser = create_base_parser()
     parser = add_args(parser)
     args = parser.parse_args()
-    output_path = args.output_dir if args.output_dir else os.path.join(os.path.pardir, "output", f"clustered_{args.weight_type}_weighted_predictions_eps{args.eps}")
+    output_path = args.output_dir 
+    if not output_path:
+        name = f"clustered_{args.weight_type}_weighted_predictions_eps{args.eps}_scorebase_{args.score_base}"
+        output_path = os.path.join(os.path.pardir, "output", name)
     cluster_function = partial(dbscan_cluster, eps=args.eps)
-    weight_func = get_weight_func(args.weight_type)
+    weight_func = get_weight_func(args.weight_type, args.score_base)
     prediction_pipeline(args, partial(aggregate_pockets, cluster_func=cluster_function), partial(process_pockets, weight_func=weight_func, by_column='score'), output_path=output_path)
