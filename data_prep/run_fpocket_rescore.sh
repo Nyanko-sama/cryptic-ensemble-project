@@ -68,7 +68,7 @@ for protein_dir in "$FPOCKET_BASE_DIR"/*; do
             
             # Original structure pdb (e.g. frame_00000.pdb)
             frame_name=$(basename "$frame_dir" | sed 's/_out$//')
-            original_pdb="$REPO_DIR/data/bioemu_results/$protein_id/${frame_name}.pdb"
+            original_pdb="$REPO_DIR/data/bioemu_outputs/$protein_id/${frame_name}.pdb"
 
             if [ -f "$prediction_pdb" ] && [ -f "$original_pdb" ]; then
                 echo "$prediction_pdb $original_pdb" >> "$dataset_file"

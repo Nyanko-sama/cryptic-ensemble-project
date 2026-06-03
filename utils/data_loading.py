@@ -3,6 +3,7 @@ import glob
 import json
 import numpy as np
 import pandas as pd
+from Bio.PDB import Superimposer
 
 def get_protein_dirs(base_dir : str, recursive=False):
     if not os.path.isdir(base_dir):
@@ -104,3 +105,14 @@ def gather_residues(protein_dir):
 
     res_df = pd.concat(res, ignore_index=True).groupby(['chain', 'residue_label', 'residue_name'], sort=False).agg(list)
     return res_df
+
+def ordered_ca_atoms(structure):
+    atoms = []
+    for model in structure:
+        for chain in model:
+            for residue in chain:
+                if "CA" in residue:
+                    atoms.append((chain.id, residue.get_id()[1], residue["CA"]))
+        break
+    atoms.sort(key=lambda item: (item[0], item[1]))
+    return [entry[2] for entry in atoms]

@@ -37,9 +37,9 @@ CONTAINER_ALPHAFLOW_DIR="/opt/workspace/alphaflow"
 export PYTHONPATH="${CONTAINER_ALPHAFLOW_DIR}:${PYTHONPATH}"
 
 # Your exact Metacentrum directories
-MY_DIR="/storage/praha1/home/nelia_k/alphaflow"
+MY_DIR="/storage/praha1/home/nelia_k/esmflow"
 INPUT_CSV="$MY_DIR/input.csv"
-FINAL_RESULTS_DIR="$MY_DIR/results"
+FINAL_RESULTS_DIR="$MY_DIR/results_esm"
 
 echo "=== STEP 1: Running ESMFlow Inference ==="
 
