@@ -1,4 +1,3 @@
-
 import argparse
 import os
 import sys
@@ -236,3 +235,39 @@ def save_predictions(prediction_df, output_path):
     if not os.path.exists(os.path.dirname(output_path)):
         os.makedirs(os.path.dirname(output_path))
     prediction_df.to_csv(output_path, index=False)
+
+def baseline_eval_file_create(args, output_path):
+    chain_lookup = load_chain_lookup(args.chain_lookup_file)
+    all_preds = {}
+
+    for protein_dir in get_protein_dirs(args.preds_dir, recursive=args.recursive):
+        prot_name = os.path.basename(protein_dir)
+
+        if args.v > 0:
+            print(f"Processing protein: {prot_name}")
+
+        try:
+            predictions_df, n_frames = gather_predictions(protein_dir)
+        except Exception as e:
+            print(f"Error occurred while gathering predictions for {prot_name}: {e}")
+            continue
+
+        if predictions_df.empty:
+            print(f"No predictions in the prediction files for {prot_name}. Skipping.")
+            continue
+        
+        # Add chain column from lookup
+        if prot_name in chain_lookup:
+            predictions_df['chain'] = chain_lookup[prot_name]
+        else:
+            raise ValueError(f"Chain information not found for {prot_name} in CSV files.")
+        
+        if args.v > 0:
+            print(f"Finished processing {prot_name}. Saving final predictions to: {output_path}")
+
+        all_preds[prot_name] = predictions_df.to_dict(orient='records')
+        for record in all_preds[prot_name]:
+            if isinstance(record.get('residue_ids'), str):
+                record['residue_ids'] = record['residue_ids'].split()
+
+    save_all_predictions(all_preds, output_path, description=os.path.basename(output_path))

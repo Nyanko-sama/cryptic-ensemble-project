@@ -18,5 +18,21 @@ To obtain dataset:
 - activate any venv with BioPython
 - run get_data.sh
 
+## Baseline prep
+```bash
+python data_for_baseline.py
+```
+
+### P2Rank baseline
+```bash 
+./run_p2rank_baseline.sh
+```
+
+### fpocket baseline
+```bash
+./run_fpocket_baseline.sh
+```
+
 # BioEmu
 I had prepared env on metacentrum. So no intallation guide. I will add it later. 
+

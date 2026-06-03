@@ -67,6 +67,9 @@ def gather_frames(protein_dir):
 def gather_predictions(protein_dir):
     pred_files = sorted(glob.glob(os.path.join(protein_dir, "frame_*_predictions.csv")))
     if not pred_files:
+        pred_files = sorted(glob.glob(os.path.join(protein_dir, "*.cif_predictions.csv")))
+
+    if not pred_files:
         raise FileNotFoundError(f"No frame_*_predictions.csv files found in protein folder: {protein_dir}")
     
     res = []
