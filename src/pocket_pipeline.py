@@ -5,6 +5,7 @@ import sys
 import json
 import sys
 import numpy as np
+import pandas as pd
 
 sys.path.append(os.path.join('..', "utils",))
 sys.path.append(os.path.join('..', ''))
@@ -14,12 +15,14 @@ from utils.data_loading import gather_predictions, get_protein_dirs, gather_fram
 
 def create_base_parser():   
     parser = argparse.ArgumentParser(description="Run the full prediction pipeline for cryptic pocket detection.")
-    parser.add_argument("--conform_dir", default='../data/bioemu_results', help="Directory containing conformational ensemble data. Default: ../data/bioemu_results")
-    parser.add_argument("--preds_dir", default="../data/p2rank_preds", help="Base directory where protein prediction folders are located. Defaults to ../data/p2rank_preds relative to script.")
+    parser.add_argument("--conform_dir", default='/auto/budejovice1/niederlj/DeepLife/bioemu_outputs', help="Directory containing conformational ensemble data. Default: ../data/bioemu_results")
+    parser.add_argument("--preds_dir", default="../p2rank_preds", help="Base directory where protein prediction folders are located. Defaults to ../data/p2rank_preds relative to script.")
     parser.add_argument("--output_dir", default=None, help="Directory to save the final predictions CSV file. Default: ../output")
     parser.add_argument("--ref_structure_folder", default="../data/cryptobench/cryptobench-dataset/auxiliary-data/cif-files", help="Folder containing reference structures for alignment.")
     parser.add_argument("--recursive", default=True, type=bool, help="Recursively search for protein directories under the base directory.")
     parser.add_argument("-v", type=int, default=0, help="Verbosity level. Higher values will print more detailed processing information. Default: 0 (no verbose output).")
+    parser.add_argument("--alignment_dir", default="../data/prot_alignments", help="Path to save alignment matrices JSON file. Default is to save in each protein directory.")
+    parser.add_argument("--chain_lookup_file", default="../data/chain_lookup.json", help="JSON file containing mapping of protein names to chain ids. Default: ../data/chain_lookup.json ")
     return parser
 
 
@@ -34,8 +37,11 @@ def _ordered_ca_atoms(structure):
     atoms.sort(key=lambda item: (item[0], item[1]))
     return [entry[2] for entry in atoms]
 
-def save_alignment_matrices(protein_dir, alignments, output_path=None):
-    output_path = output_path or os.path.join(protein_dir, "structure_alignment_matrices.json")
+def save_alignment_matrices(protein_dir, alignments, alignment_dir=None):
+    # Extract protein name from directory path and save alignment matrices to JSON file in the same directory or specified output folder
+    protein_name = os.path.basename(protein_dir)
+    print(protein_name)
+    output_path = os.path.join(alignment_dir, protein_name, "structure_alignment_matrices.json") if alignment_dir else os.path.join(protein_dir, "structure_alignment_matrices.json")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w") as f:
         json.dump({
@@ -69,12 +75,14 @@ def align_pocket_coordinates(prediction_df, alignment_out):
 
     return prediction_df
 
-def compute_structure_alignments(protein_dir : str, reference_structure_path : str, verbose=False):
+def compute_structure_alignments(protein_dir : str, reference_structure_path : str, verbose=False, alignment_dir=None):
     # Check if alignment matrices already exist
-    if os.path.isfile(os.path.join(protein_dir, "structure_alignment_matrices.json")):
+    prot_name = os.path.basename(protein_dir)
+    final_align_dir = os.path.join(alignment_dir, prot_name) if alignment_dir else protein_dir
+    if os.path.isfile(os.path.join(final_align_dir, "structure_alignment_matrices.json")):
         if verbose:
-            print(f"Alignment matrices already exist for {protein_dir}. Loading from file.")
-        return get_alignment_matrices(protein_dir)
+            print(f"Alignment matrices already exist for {prot_name}. Loading from file.")
+        return get_alignment_matrices(final_align_dir)
 
     frame_files = gather_frames(protein_dir)
     if verbose:
@@ -83,7 +91,8 @@ def compute_structure_alignments(protein_dir : str, reference_structure_path : s
     # There was a bug MMCIF parser that caused it to fail when trying to warn about missing residues. Had to manually fix the 
     # parameters inside the source code of the parser to get it working. See Bio/PDB/MMCIFParser.py line 241 if something like that happens again.
     parser = MMCIFParser(QUIET=True, auth_residues=False)
-    original_structure = parser.get_structure(os.path.basename(reference_structure_path).split('.')[0], reference_structure_path)
+
+    original_structure = parser.get_structure(os.path.basename(reference_structure_path), reference_structure_path)
     reference_atoms = _ordered_ca_atoms(original_structure)
 
     alignments = []
@@ -99,11 +108,20 @@ def compute_structure_alignments(protein_dir : str, reference_structure_path : s
             "rmsd": rmsd
         })
 
-    save_alignment_matrices(protein_dir, alignments)
-    return get_alignment_matrices(protein_dir)
+    save_alignment_matrices(protein_dir, alignments, alignment_dir=alignment_dir)
+    return get_alignment_matrices(final_align_dir)
+
+def load_chain_lookup(path):
+    """Load chain information from a JSON file."""
+    with open(path, 'r') as f:
+        chain_lookup = json.load(f)
+    return chain_lookup
 
 def prediction_pipeline(args, aggregation_func, process_func, output_path):
+    # Load chain information from both train and test CSV files
+    chain_lookup = load_chain_lookup(args.chain_lookup_file)
     all_preds = {}
+    
     for protein_dir in get_protein_dirs(args.preds_dir, recursive=args.recursive):
         prot_name = os.path.basename(protein_dir)
 
@@ -124,12 +142,19 @@ def prediction_pipeline(args, aggregation_func, process_func, output_path):
             print(f"Computing structure alignments for {prot_name} using reference structure at: {reference_structure_path}")
 
         # Align pocket coordinates to reference structure frame
-        alignment_out = compute_structure_alignments(os.path.join(args.conform_dir, prot_name), reference_structure_path=reference_structure_path, verbose=args.v > 0)
+        alignment_out = compute_structure_alignments(os.path.join(args.conform_dir, prot_name), reference_structure_path=reference_structure_path, verbose=args.v > 0,
+                                                     alignment_dir=args.alignment_dir)
         predictions_df = align_pocket_coordinates(predictions_df, alignment_out)
 
         # Aggregate pockets and process final predictions
         aggregation_out = aggregation_func(predictions_df, verbose=args.v)
         final_pred_df = process_func(aggregation_out, n_frames=n_frames, verbose=args.v)
+
+        # Add chain column from lookup
+        if prot_name in chain_lookup:
+            final_pred_df['chain'] = chain_lookup[prot_name]
+        else:
+            raise ValueError(f"Chain information not found for {prot_name} in CSV files.")
 
         if args.v > 0:
             print(f"Finished processing {prot_name}. Saving final predictions to: {output_path}")
@@ -138,12 +163,75 @@ def prediction_pipeline(args, aggregation_func, process_func, output_path):
         all_preds[os.path.basename(protein_dir)] = final_pred_df.to_dict(orient='records')
         save_predictions(final_pred_df, os.path.join(output_path, os.path.basename(protein_dir) + "_aggregated_predictions.csv"))
 
-    save_all_predictions(all_preds, output_path)
+    save_all_predictions(all_preds, output_path, description=os.path.basename(output_path))
 
-def save_all_predictions(all_preds, output_path):
-    # Save all predictions to a JSON file for easier downstream analysis
+def save_all_predictions(all_preds, output_path, team_name="Praga", model_version="v1.0", 
+                         submission_date=None, description="Cryptic pocket predictions using ensemble methods"):
+    """Save predictions in the standardized JSON format.
+    
+    Args:
+        all_preds: Dictionary mapping protein names to lists of prediction records
+        output_path: Path to save the JSON file
+        team_name: Team name for metadata
+        model_version: Model version for metadata
+        submission_date: Submission date (default: today's date)
+        description: Description of the submission
+    """
+    from datetime import datetime
+    
+    if submission_date is None:
+        submission_date = datetime.now().strftime("%Y-%m-%d")
+    
+    # Build predictions array
+    predictions = []
+    for pdb_id, pred_records in all_preds.items():
+        if not pred_records:
+            continue
+        
+        # Get chain and protein-level info from first record
+        first_record = pred_records[0]
+        chain = first_record.get('chain')
+        
+        # Build ranked pockets by sorting by score/probability
+        ranked_pockets = []
+        for rank, record in enumerate(sorted(pred_records, 
+                                            key=lambda x: x.get('score'), 
+                                            reverse=True), 1):
+            pocket = {
+                "rank": rank,
+                "probability": float(record.get('score', record.get('probability', 0))),
+                "residues": record.get('residues', []),
+                "center": [
+                    float(record.get('center_x', 0)),
+                    float(record.get('center_y', 0)),
+                    float(record.get('center_z', 0))
+                ]
+            }
+            ranked_pockets.append(pocket)
+        
+        predictions.append({
+            "pdb_id": pdb_id,
+            "chain": chain,
+            "ranked_pockets": ranked_pockets
+        })
+    
+    # Build final JSON structure
+    output_json = {
+        "metadata": {
+            "team_name": team_name,
+            "model_version": model_version,
+            "submission_date": submission_date,
+            "description": description
+        },
+        "predictions": predictions
+    }
+    
+    # Save to file
+    if not os.path.exists(os.path.dirname(output_path)):
+        os.makedirs(os.path.dirname(output_path))
+    
     with open(os.path.join(output_path, "all_predictions.json"), 'w') as f:
-        json.dump(all_preds, f, indent=4)
+        json.dump(output_json, f, indent=2)
 
 def save_predictions(prediction_df, output_path):
     if not os.path.exists(os.path.dirname(output_path)):

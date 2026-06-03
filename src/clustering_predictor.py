@@ -14,6 +14,7 @@ def add_args(parser):
     parser.add_argument("--weight_type", default="cosine", choices=["cosine", "linear", "none"], help="Type of weighting to apply when averaging scores across frames. Default: cosine")
     parser.add_argument("--eps", type=float, default=2.0, help="DBSCAN eps parameter for clustering pockets. Default: 2.0")
     return parser
+
 def string_list_union(inputs, sep=' '):
     if not inputs:
         return []
@@ -46,39 +47,42 @@ def aggregate_pockets(prediction_df: pd.DataFrame, cluster_func=dbscan_cluster, 
     aggregated = prediction_df.groupby('cluster').agg(list).reset_index(drop=True)
     return aggregated
 
-def cosine_weighted_average(scores, n_frames):
+def cosine_weighted_average(scores, n_total_frames, n_cluster_frames):
     """
     Calculate the cosine-weighted average of a list of scores.
     Pockets present only in one frame will have a weight of 1, while pockets present in all frames will have a weight of ~0 (but > 0), with a smooth cosine transition in between.
 
     Parameters:
     scores (list): List of scores.
-    n_frames (int): Number of frames.
-    
+    n_total_frames (int): Total number of frames.
+    n_cluster_frames (int): Number of frames in the cluster.
+
     Returns:
     float: Cosine-weighted average
     """
-    if not scores:
+    if len(scores) == 0:
         return 0
-    return np.mean(scores) * (1 + np.cos(np.pi * (len(scores) - 1) / n_frames)) / 2
+    return np.mean(scores) * (1 + np.cos(np.pi * (n_cluster_frames - 1) / n_total_frames)) / 2
 
-def linear_weighted_average(scores, n_frames):
+def linear_weighted_average(scores, n_total_frames, n_cluster_frames):
     """
     Calculate the linearly-weighted average of a list of scores.
     Pockets present only in one frame will have a weight of 1, while pockets present in all frames will have a weight of 0, with a linear transition in between.
 
     Parameters:
     scores (list): List of scores.
-    n_frames (int): Number of frames.
-    
+    n_total_frames (int): Total number of frames.
+    n_cluster_frames (int): Number of frames in the cluster.
+
     Returns:
     float: Linearly-weighted average
     """
-    if not scores:
+    
+    if len(scores) == 0:
         return 0
-    return np.mean(scores) * (1 - (len(scores) - 1) / n_frames)
+    return np.mean(scores) * (1 - (n_cluster_frames - 1) / n_total_frames)
 
-def no_weight_average(scores, n_frames):
+def no_weight_average(scores, n_total_frames, n_cluster_frames):
     """
     Calculate the simple average of a list of scores without any weighting.
 
@@ -89,7 +93,7 @@ def no_weight_average(scores, n_frames):
     Returns:
     float: Simple average
     """
-    if not scores:
+    if len(scores) == 0:
         return 0
     return np.mean(scores)
 
@@ -102,13 +106,14 @@ def get_weight_func(weight_type):
         return no_weight_average
     else:
         raise ValueError(f"Invalid weight type: {weight_type}. Must be one of: cosine, linear, none.")
-
+    
 def process_pockets(aggregated_df, weight_func, by_column="score", n_frames=None, verbose=0):
     if by_column not in aggregated_df.columns:
         raise ValueError(f"Column '{by_column}' not found in aggregated DataFrame.")
     
     # Score is the average score across frames for the pocket, weighted by the number of predictions in each cluster
-    aggregated_df[by_column] = aggregated_df[by_column].apply(lambda x: weight_func(x, n_frames))
+    aggregated_df['n_cluster_frames'] = aggregated_df['frame_file'].apply(lambda x: len(set(x)))
+    aggregated_df[by_column] = aggregated_df[[by_column, 'n_cluster_frames']].apply(lambda x: weight_func(x[by_column], n_frames, x['n_cluster_frames']), axis=1)
     for coord in ["center_x", "center_y", "center_z"]:
         aggregated_df[coord] = aggregated_df[coord].apply(lambda x: np.mean(x))
     aggregated_df['residue_ids'] = aggregated_df['residue_ids'].apply(string_list_union)
