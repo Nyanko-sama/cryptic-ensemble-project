@@ -199,8 +199,8 @@ def save_all_predictions(all_preds, output_path, team_name="Praga", model_versio
                                             reverse=True), 1):
             pocket = {
                 "rank": rank,
-                "probability": float(record.get('score', record.get('probability', 0))),
-                "residues": record.get('residues', []),
+                "probability": float(record.get('score')), # For now, we are using the score as the probability. This can be changed if a separate probability field is available.
+                "residues":[{f"{chain}:{residue}"} for residue in record.get('residue_ids', [])],
                 "center": [
                     float(record.get('center_x', 0)),
                     float(record.get('center_y', 0)),

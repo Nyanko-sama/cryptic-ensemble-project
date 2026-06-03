@@ -11,6 +11,7 @@ from functools import partial
 
 def add_args(parser):
     parser.add_argument("--columns", default="score", help="Comma-separated list of columns to average. Default: score")
+    parser.add_argument("--probability_agg", default="mean", choices=["mean", "max"], help="Method to aggregate probabilities across frames. Default: mean")
     parser.add_argument("--weight_type", default="cosine", choices=["cosine", "linear", "none"], help="Type of weighting to apply when averaging scores across frames. Default: cosine")
     parser.add_argument("--eps", type=float, default=2.0, help="DBSCAN eps parameter for clustering pockets. Default: 2.0")
     return parser
@@ -120,7 +121,10 @@ def process_pockets(aggregated_df, weight_func, by_column="score", n_frames=None
     aggregated_df = aggregated_df.sort_values(by=by_column, ascending=False)
     aggregated_df['rank'] = range(1, len(aggregated_df) + 1)
     # Just a placeholder really
-    aggregated_df['probability'] = aggregated_df['probability'].apply(lambda x: np.mean(x) if isinstance(x, list) else x)
+    if args.probability_agg == "mean":
+        aggregated_df['probability'] = aggregated_df['probability'].apply(lambda x: np.mean(x) if isinstance(x, list) else x)
+    elif args.probability_agg == "max":
+        aggregated_df['probability'] = aggregated_df['probability'].apply(lambda x: np.max(x) if isinstance(x, list) else x)
     aggregated_df['name'] = aggregated_df['rank'].apply(lambda x: f"pocket{x}")
     return aggregated_df.reset_index(drop=True)[['name', 'rank', by_column, 'probability', 'center_x', 'center_y', 'center_z', 'residue_ids']]
 
