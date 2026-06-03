@@ -2,3 +2,5 @@ data/
 */__pycache__/
 p2rank
 venv
+p2rank_preds
+output
