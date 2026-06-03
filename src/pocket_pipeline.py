@@ -21,7 +21,7 @@ def create_base_parser():
     parser.add_argument("--ref_structure_folder", default="../data/cryptobench/cryptobench-dataset/auxiliary-data/cif-files", help="Folder containing reference structures for alignment.")
     parser.add_argument("--recursive", default=True, type=bool, help="Recursively search for protein directories under the base directory.")
     parser.add_argument("-v", type=int, default=0, help="Verbosity level. Higher values will print more detailed processing information. Default: 0 (no verbose output).")
-    parser.add_argument("--alignment_dir", default="../data/prot_alignments", help="Path to save alignment matrices JSON file. Default is to save in each protein directory.")
+    parser.add_argument("--alignment_dir", default="../data/prot_alignments", help="!!!REGENERATE IF YOURE USING A DIFFERENT CONFORMATION GENEARATOR!!! Path to save alignment matrices JSON file. Default is to save in each protein directory.")
     parser.add_argument("--chain_lookup_file", default="../data/chain_lookup.json", help="JSON file containing mapping of protein names to chain ids. Default: ../data/chain_lookup.json ")
     return parser
 
