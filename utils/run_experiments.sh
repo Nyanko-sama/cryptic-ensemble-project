@@ -11,6 +11,9 @@ CONFORM_DIR="/auto/budejovice1/niederlj/DeepLife/bioemu_outputs/"
 PREDS_DIR="${PROJECT_ROOT}/p2rank_preds"
 OUTPUT_ROOT="${PROJECT_ROOT}/output"
 
+# Max parallel jobs (can be overridden via env var MAX_JOBS)
+MAX_JOBS="${MAX_JOBS:-$(nproc)}"
+
 # hyperparam_name : [list of values]
 declare -A HYPERPARAMS
 HYPERPARAMS[weight_type]="cosine linear none"
@@ -87,19 +90,55 @@ function run_command() {
   echo "========================================"
 
   if [[ "${DRY_RUN}" == "true" ]]; then
-    return
+    return 0
   fi
 
   mkdir -p "${output_dir}"
   printf '%s\n' "${cmd[*]}" > "${output_dir}/command.txt"
+
+  # Run command from the src directory (synchronously). The caller may background this.
   pushd "${PROJECT_ROOT}/src" >/dev/null
-  "${cmd[@]}"
+  "${cmd[@]}" 2> "${output_dir}/run.err"
+  rc=$?
   popd >/dev/null
+  return ${rc}
 }
 
-# Main execution.
+# Main execution (parallelized).
+running=0
+failed=0
+
 while IFS= read -r combo; do
   [[ -z "${combo}" ]] && continue
   IFS=' ' read -r -a entries <<< "${combo}"
-  run_command "${entries[@]}"
+
+  # Launch job in background
+  run_command "${entries[@]}" &
+  pid=$!
+  running=$((running+1))
+
+  # When we reach concurrency limit, wait for at least one job to finish
+  while (( running >= MAX_JOBS )); do
+    wait -n
+    rc=$?
+    if (( rc != 0 )); then
+      failed=1
+    fi
+    running=$((running-1))
+  done
 done < <(build_combinations 0)
+
+# Wait for remaining background jobs
+while (( running > 0 )); do
+  wait -n
+  rc=$?
+  if (( rc != 0 )); then
+    failed=1
+  fi
+  running=$((running-1))
+done
+
+if (( failed != 0 )); then
+  echo "One or more runs failed"
+  exit 1
+fi
