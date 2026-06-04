@@ -20,18 +20,17 @@ def create_base_parser():
     parser.add_argument("--ref_structure_folder", default="../data/cryptobench/cryptobench-dataset/auxiliary-data/cif-files", help="Folder containing reference structures for alignment.")
     parser.add_argument("--recursive", default=True, type=bool, help="Recursively search for protein directories under the base directory.")
     parser.add_argument("-v", type=int, default=0, help="Verbosity level. Higher values will print more detailed processing information. Default: 0 (no verbose output).")
-    parser.add_argument("--alignment_dir", default="../data/prot_alignments", help="!!!REGENERATE IF YOURE USING A DIFFERENT CONFORMATION GENEARATOR!!! Path to save alignment matrices JSON file. Default is to save in each protein directory.")
+    parser.add_argument("--alignment_dir", default="../data/prot_alignments_fixed", help="!!!REGENERATE IF YOURE USING A DIFFERENT CONFORMATION GENEARATOR!!! Path to save alignment matrices JSON file. Default is to save in each protein directory.")
     parser.add_argument("--chain_lookup_file", default="../data/chain_lookup.json", help="JSON file containing mapping of protein names to chain ids. Default: ../data/chain_lookup.json ")
     return parser
 
 
-def _ordered_ca_atoms(structure):
+def _ordered_ca_atoms(structure, chain):
     atoms = []
     for model in structure:
-        for chain in model:
-            for residue in chain:
-                if "CA" in residue:
-                    atoms.append((chain.id, residue.get_id()[1], residue["CA"]))
+        for residue in model[chain]:
+            if "CA" in residue:
+                atoms.append((chain, residue.get_id()[1], residue["CA"]))
         break
     atoms.sort(key=lambda item: (item[0], item[1]))
     return [entry[2] for entry in atoms]
@@ -74,7 +73,7 @@ def align_pocket_coordinates(prediction_df, alignment_out):
 
     return prediction_df
 
-def compute_structure_alignments(protein_dir : str, reference_structure_path : str, verbose=False, alignment_dir=None):
+def compute_structure_alignments(protein_dir : str, reference_structure_path : str, chain_lookup, verbose=False, alignment_dir=None, ):
     # Check if alignment matrices already exist
     prot_name = os.path.basename(protein_dir)
     final_align_dir = os.path.join(alignment_dir, prot_name) if alignment_dir else protein_dir
@@ -89,15 +88,15 @@ def compute_structure_alignments(protein_dir : str, reference_structure_path : s
     
     # There was a bug MMCIF parser that caused it to fail when trying to warn about missing residues. Had to manually fix the 
     # parameters inside the source code of the parser to get it working. See Bio/PDB/MMCIFParser.py line 241 if something like that happens again.
-    parser = MMCIFParser(QUIET=True, auth_residues=False)
+    parser = MMCIFParser(QUIET=True, auth_residues=True)
 
     original_structure = parser.get_structure(os.path.basename(reference_structure_path), reference_structure_path)
-    reference_atoms = _ordered_ca_atoms(original_structure)
+    reference_atoms = _ordered_ca_atoms(original_structure, chain_lookup[prot_name])
 
     alignments = []
     for frame_file in frame_files:
         frame_structure = PDBParser(QUIET=True).get_structure("frame", frame_file)
-        frame_atoms = _ordered_ca_atoms(frame_structure)
+        frame_atoms = _ordered_ca_atoms(frame_structure, 'A')
         R, t, n_matched, rmsd = compute_frame_alignment(reference_atoms, frame_atoms)
         alignments.append({
             "frame_file": os.path.basename(frame_file),
@@ -141,12 +140,12 @@ def prediction_pipeline(args, aggregation_func, process_func, output_path):
 
         # Align pocket coordinates to reference structure frame
         alignment_out = compute_structure_alignments(os.path.join(args.conform_dir, prot_name), reference_structure_path=reference_structure_path, verbose=args.v > 0,
-                                                     alignment_dir=args.alignment_dir)
+                                                     alignment_dir=args.alignment_dir, chain_lookup=chain_lookup)
         predictions_df = align_pocket_coordinates(predictions_df, alignment_out)
 
         # Aggregate pockets and process final predictions for this protein
         aggregation_out = aggregation_func(predictions_df, verbose=args.v)
-        final_pred_df = process_func(aggregation_out, n_frames=n_frames, verbose=args.v)
+        final_pred_df = process_func(reference_structure_path, chain_lookup[prot_name],aggregation_out, n_frames=n_frames, verbose=args.v)
 
         # Add chain column from lookup
         if prot_name in chain_lookup:

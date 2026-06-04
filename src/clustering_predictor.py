@@ -18,6 +18,41 @@ def add_args(parser):
     parser.add_argument("--baseline", action="store_true", help="Whether calculated for baseline, which means there is only one frame, no aggregation and no alignment. Default: False")
     return parser
 
+def _load_ca_coords(cif_path, chain_id):
+    """
+    Returns dict {residue_key: np.array([x,y,z])} for all Cα in chain.
+    Keys are strings like "220" or "60A" (res_id + ins_code).
+    """
+    import biotite.structure.io.pdbx as pdbx
+    from biotite.structure.io.pdbx import get_structure
+    from biotite.structure import get_residues
+
+    cif_file = pdbx.CIFFile.read(cif_path)
+    protein = get_structure(cif_file, model=1, use_author_fields=True)
+    protein = protein[
+        (protein.atom_name == "CA")
+        & (protein.element == "C")
+        & (protein.chain_id == chain_id)
+    ]
+    residue_ids, _ = get_residues(protein)
+
+    coords_all = protein.coord
+    coords = {}
+    for i, atom in enumerate(protein):
+        ins = atom.ins_code.strip() if hasattr(atom, "ins_code") else ""
+        key = str(atom.res_id) + ins
+        coords[key] = coords_all[i]
+
+    assert len(residue_ids) == len(coords)
+    return coords
+
+
+def _centroid(ca_coords, residue_keys):
+    pts = [ca_coords[r] for r in residue_keys if r in ca_coords]
+    if not pts:
+        raise ValueError(f"No Cα atoms found for residues {residue_keys}")
+    return np.mean(pts, axis=0)
+
 def string_list_union(inputs, sep=' '):
     if not inputs:
         return []
@@ -110,7 +145,7 @@ def get_weight_func(weight_type, score_base):
     else:
         raise ValueError(f"Invalid weight type: {weight_type}. Must be one of: cosine, linear, none.")
     
-def process_pockets(aggregated_df, weight_func, by_column="score", n_frames=None, verbose=0):
+def process_pockets(cif_path, chain_id, aggregated_df, weight_func, by_column="score", n_frames=None, verbose=0):
     if by_column not in aggregated_df.columns:
         raise ValueError(f"Column '{by_column}' not found in aggregated DataFrame.")
     
@@ -119,10 +154,19 @@ def process_pockets(aggregated_df, weight_func, by_column="score", n_frames=None
     aggregated_df[by_column] = aggregated_df[[by_column, 'n_cluster_frames']].apply(lambda x: weight_func(x[by_column], n_frames, x['n_cluster_frames']), axis=1)
     
     # Average the coordinates for pockets in the same cluster
-    for coord in ["center_x", "center_y", "center_z"]:
-        aggregated_df[coord] = aggregated_df[coord].apply(lambda x: np.mean(x))
-
+    ref_struct_coords = _load_ca_coords(cif_path, chain_id)
     aggregated_df['residue_ids'] = aggregated_df['residue_ids'].apply(string_list_union)
+    xs, ys, zs = [],  [], []
+    for pocket_residues in aggregated_df['residue_ids']:
+        center = _centroid(ref_struct_coords, [f"{res_id[2:]}" for res_id in pocket_residues], )
+        xs.append(center[0])
+        ys.append(center[1])
+        zs.append(center[2])
+
+    aggregated_df["center_x"] = xs
+    aggregated_df["center_y"] = ys
+    aggregated_df["center_z"] = zs
+
     aggregated_df = aggregated_df.sort_values(by=by_column, ascending=False)
     aggregated_df['rank'] = range(1, len(aggregated_df) + 1)
     # Just a placeholder really
