@@ -33,6 +33,12 @@ python data_for_baseline.py
 ./run_fpocket_baseline.sh
 ```
 
+# Evaluation
+Use Vita's script for that
+```bash 
+python src/evaluate/evaluate.py
+```
+
 # BioEmu
 I had prepared env on metacentrum. So no intallation guide. I will add it later. 
 

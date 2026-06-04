@@ -262,12 +262,20 @@ def baseline_eval_file_create(args, output_path):
         else:
             raise ValueError(f"Chain information not found for {prot_name} in CSV files.")
         
+        all_preds[prot_name] = predictions_df.to_dict(orient='records')
+        
         if args.v > 0:
             print(f"Finished processing {prot_name}. Saving final predictions to: {output_path}")
-
-        all_preds[prot_name] = predictions_df.to_dict(orient='records')
+     
+        valid_records = []
         for record in all_preds[prot_name]:
-            if isinstance(record.get('residue_ids'), str):
-                record['residue_ids'] = record['residue_ids'].split()
+            residue_ids = record.get('residue_ids')
+            if isinstance(residue_ids, str):
+                record['residue_ids'] = residue_ids.split()
+                valid_records.append(record)
+            else:
+                if args.v > 0:
+                    print(f"Skipping record with unexpected format for residue_ids: {record}")
+        all_preds[prot_name] = valid_records
 
     save_all_predictions(all_preds, output_path, description=os.path.basename(output_path))

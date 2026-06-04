@@ -135,9 +135,6 @@ def process_pockets(aggregated_df, weight_func, by_column="score", n_frames=None
     return aggregated_df.reset_index(drop=True)[['name', 'rank', by_column, 'probability', 'center_x', 'center_y', 'center_z', 'residue_ids']]
 
 def main():
-    parser = create_base_parser()
-    parser = add_args(parser)
-    args = parser.parse_args()
     output_path = args.output_dir 
     if not output_path:
         name = f"clustered_{args.weight_type}_weighted_predictions_eps{args.eps}_scorebase_{args.score_base}"
@@ -155,4 +152,7 @@ def main():
     
 
 if __name__ == "__main__":
+    parser = create_base_parser()
+    parser = add_args(parser)
+    args = parser.parse_args()
     main()
