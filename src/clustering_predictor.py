@@ -6,7 +6,7 @@ import os
 import multiprocessing
 
 from sklearn.cluster import DBSCAN
-from pocket_pipeline import prediction_pipeline, create_base_parser
+from pocket_pipeline import prediction_pipeline, create_base_parser, baseline_eval_file_create
 from functools import partial
 
 def add_args(parser):
@@ -15,6 +15,7 @@ def add_args(parser):
     parser.add_argument("--weight_type", default="cosine", choices=["cosine", "linear", "none"], help="Type of weighting to apply when averaging scores across frames. Default: cosine")
     parser.add_argument("--score_base", default="mean", choices=["mean", "max", "median"], help="Method to aggregate scores across frames before weighting. Default: mean")
     parser.add_argument("--eps", type=float, default=2.0, help="DBSCAN eps parameter for clustering pockets. Default: 2.0")
+    parser.add_argument("--baseline", action="store_true", help="Whether calculated for baseline, which means there is only one frame, no aggregation and no alignment. Default: False")
     return parser
 
 def string_list_union(inputs, sep=' '):
@@ -133,7 +134,7 @@ def process_pockets(aggregated_df, weight_func, by_column="score", n_frames=None
     aggregated_df['name'] = aggregated_df['rank'].apply(lambda x: f"pocket{x}")
     return aggregated_df.reset_index(drop=True)[['name', 'rank', by_column, 'probability', 'center_x', 'center_y', 'center_z', 'residue_ids']]
 
-if __name__ == "__main__":
+def main():
     parser = create_base_parser()
     parser = add_args(parser)
     args = parser.parse_args()
@@ -141,6 +142,17 @@ if __name__ == "__main__":
     if not output_path:
         name = f"clustered_{args.weight_type}_weighted_predictions_eps{args.eps}_scorebase_{args.score_base}"
         output_path = os.path.join(os.path.pardir, "output", name)
+    
+    if args.baseline:
+        print("Running baseline evaluation file creation...")
+        os.makedirs(output_path, exist_ok=True)
+        baseline_eval_file_create(args, output_path)
+        return 
+    
     cluster_function = partial(dbscan_cluster, eps=args.eps)
     weight_func = get_weight_func(args.weight_type, args.score_base)
     prediction_pipeline(args, partial(aggregate_pockets, cluster_func=cluster_function), partial(process_pockets, weight_func=weight_func, by_column='score'), output_path=output_path)
+    
+
+if __name__ == "__main__":
+    main()
