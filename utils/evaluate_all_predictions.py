@@ -2,6 +2,8 @@
 import argparse
 import subprocess
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
 
 
 def find_all_predictions(output_root: Path):
@@ -64,6 +66,17 @@ def parse_args():
         default=Path(__file__).resolve().parents[1] / 'data' / 'test.csv',
         help='Path to test ground truth CSV.',
     )
+    parser.add_argument(
+        '--jobs',
+        type=int,
+        default=max(1, (os.cpu_count() or 2) // 2),
+        help='Number of parallel evaluation jobs to run. Defaults to half the CPUs.',
+    )
+    parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Re-run evaluations even if output files already exist.',
+    )
     return parser.parse_args()
 
 
@@ -75,25 +88,55 @@ def main():
         print(f"No all_predictions.json files found under {args.output_root}")
         raise SystemExit(1)
 
-    for predictions_path in predictions_files:
-        parent_dir = predictions_path.parent
-        train_output = parent_dir / 'all_predictions.eval_train.json'
-        test_output = parent_dir / 'all_predictions.eval_test.json'
+    # Collect tasks and run in a thread pool so subprocesses run concurrently.
+    futures = []
+    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        for predictions_path in predictions_files:
+            parent_dir = predictions_path.parent
+            train_output = parent_dir / 'all_predictions.eval_train.json'
+            test_output = parent_dir / 'all_predictions.eval_test.json'
 
-        run_evaluation(
-            args.evaluate_script,
-            predictions_path,
-            args.train_ground_truth,
-            args.structures,
-            train_output,
-        )
-        run_evaluation(
-            args.evaluate_script,
-            predictions_path,
-            args.test_ground_truth,
-            args.structures,
-            test_output,
-        )
+            # If both evaluation outputs exist and not forcing, skip this predictions file.
+            if not args.force and train_output.exists() and test_output.exists():
+                print(f"Skipping evaluation for {predictions_path} — both train and test eval files exist")
+                continue
+
+            # Schedule train evaluation if forcing or missing
+            if args.force or not train_output.exists():
+                futures.append(pool.submit(
+                    run_evaluation,
+                    args.evaluate_script,
+                    predictions_path,
+                    args.train_ground_truth,
+                    args.structures,
+                    train_output,
+                ))
+            else:
+                print(f"Train evaluation already exists for {predictions_path}, skipping train")
+
+            # Schedule test evaluation if forcing or missing
+            if args.force or not test_output.exists():
+                futures.append(pool.submit(
+                    run_evaluation,
+                    args.evaluate_script,
+                    predictions_path,
+                    args.test_ground_truth,
+                    args.structures,
+                    test_output,
+                ))
+            else:
+                print(f"Test evaluation already exists for {predictions_path}, skipping test")
+
+        # Wait for all scheduled evaluations to finish and propagate exceptions
+        for fut in as_completed(futures):
+            try:
+                fut.result()
+            except SystemExit as e:
+                print(f"Evaluation subprocess exited with code {e.code}")
+                raise
+            except Exception:
+                print("An evaluation job failed:")
+                raise
 
     print('Evaluation complete.')
 
